@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <thread>
 #include <chrono>
 
@@ -50,7 +51,6 @@ void appA()
 
     while (true)
     {
-
         // 클라이언트로부터 데이터 읽기
         read(new_socket, g_tcpBuffer, 1024);
         std::cout << "Received message from tcpTask app: " << g_tcpBuffer << std::endl;
@@ -60,7 +60,6 @@ void appA()
     }
 }
 
-#if 0
 void appB()
 {
     int udp_socket;
@@ -84,7 +83,7 @@ void appB()
         std::string receivedMessage = g_tcpBuffer;
 
         // 데이터 전송
-        ssize_t bytes_sent = sendto(udp_socket, receivedMessage, strlen(receivedMessage), 0, (struct sockaddr *)&server_address, sizeof(server_address));
+        ssize_t bytes_sent = sendto(udp_socket, receivedMessage.c_str(), receivedMessage.size(), 0, (struct sockaddr *)&server_address, sizeof(server_address));
         if (bytes_sent == -1)
         {
             perror("sendto");
@@ -96,22 +95,20 @@ void appB()
         std::this_thread::sleep_for(std::chrono::seconds(5));
     }
 }
-#endif
 
 int main()
 {
-
     // App A 작업 수행
     std::cout << "App A is running..." << std::endl;
     // App B 작업 수행
-    // std::cout << "App B is running..." << std::endl;
+    std::cout << "App B is running..." << std::endl;
 
     std::thread threadA(appA);
-    // std::thread threadB(appB);
+    std::thread threadB(appB);
 
     // 스레드 대기
     threadA.join();
-    // threadB.join();
+    threadB.join();
 
     return 0;
 }

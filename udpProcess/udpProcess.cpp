@@ -2,12 +2,15 @@
 #include <cstring>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <thread>
+#include <chrono>
 
 void appA()
 {
     int udp_socket;
     struct sockaddr_in server_address, client_address;
     char buffer[1024];
+    int cnt = 0;
 
     // 소켓 생성
     if ((udp_socket = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
@@ -31,19 +34,17 @@ void appA()
 
     while (true)
     {
-
-        while (true)
+        // 클라이언트로부터 데이터 수신
+        ssize_t bytes_received = recvfrom(udp_socket, buffer, sizeof(buffer), 0, (struct sockaddr *)&client_address, &client_address_len);
+        if (bytes_received == -1)
         {
-            // 클라이언트로부터 데이터 수신
-            ssize_t bytes_received = recvfrom(udp_socket, buffer, sizeof(buffer), 0, (struct sockaddr *)&client_address, &client_address_len);
-            if (bytes_received == -1)
-            {
-                perror("recvfrom");
-                // continue;
-            }
-
-            std::cout << "Received message from client: " << buffer << std::endl;
+            perror("recvfrom");
+            // continue;
         }
+
+        std::cout << "Received message from client: " << buffer << std::endl;
+        std::cout << "cnt: " << cnt++ << std::endl;
+
         std::this_thread::sleep_for(std::chrono::seconds(5));
     }
 }
