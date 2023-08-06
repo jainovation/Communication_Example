@@ -5,11 +5,16 @@
 #include <thread>
 #include <chrono>
 
+#include <sys/ipc.h>
+#include <sys/shm.h>
+
+char g_unixbuffer[1024];
+
 void appA()
 {
     int udp_socket;
     struct sockaddr_in server_address, client_address;
-    char buffer[1024];
+    // char buffer[1024];
     int cnt = 0;
 
     // 소켓 생성
@@ -35,41 +40,55 @@ void appA()
     while (true)
     {
         // 클라이언트로부터 데이터 수신
-        ssize_t bytes_received = recvfrom(udp_socket, buffer, sizeof(buffer), 0, (struct sockaddr *)&client_address, &client_address_len);
+        ssize_t bytes_received = recvfrom(udp_socket, g_unixbuffer, sizeof(g_unixbuffer), 0, (struct sockaddr *)&client_address, &client_address_len);
         if (bytes_received == -1)
         {
             perror("recvfrom");
             // continue;
         }
 
-        std::cout << "Received message from client: " << buffer << std::endl;
+        std::cout << "Received message from unixTask: " << g_unixbuffer << std::endl;
         std::cout << "cnt: " << cnt++ << std::endl;
 
         std::this_thread::sleep_for(std::chrono::seconds(5));
     }
 }
 
-#if 0
-void appB() {
-    while (true) {
-        // App B 작업 수행
-        std::cout << "App B is running..." << std::endl;
+void appB()
+{
+    key_t key = ftok("shared_memory_key", 65); // 키 생성
+
+    // 공유 메모리 생성 및 연결
+    int shmid = shmget(key, 1024, 0666 | IPC_CREAT);
+    char *shmaddr = (char *)shmat(shmid, (void *)0, 0);
+
+    while (true)
+    {
+        // 데이터 쓰기
+        std::string message = g_unixbuffer;
+        strcpy(shmaddr, message.c_str());
+
+        std::cout << "Message sent to shared Memory" << std::endl;
+
         std::this_thread::sleep_for(std::chrono::seconds(5));
     }
+    // 연결 해제
+    shmdt(shmaddr);
 }
-#endif
 
 int main()
 {
     // App A 작업 수행
     std::cout << "App A is running..." << std::endl;
+    // App B 작업 수행
+    std::cout << "App B is running..." << std::endl;
 
     std::thread threadA(appA);
-    // std::thread threadB(appB);
+    std::thread threadB(appB);
 
     // 스레드 대기
     threadA.join();
-    // threadB.join();
+    threadB.join();
 
     return 0;
 }
