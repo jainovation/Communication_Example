@@ -8,7 +8,8 @@
 
 char g_tcpBuffer[1024];
 
-void appA() {
+void appA()
+{
     int server_fd, new_socket;
     struct sockaddr_in address;
     int addrlen = sizeof(address);
@@ -16,7 +17,8 @@ void appA() {
     int cnt = 0;
 
     // 소켓 생성
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0)
+    {
         perror("socket failed");
         // return 1;
     }
@@ -26,24 +28,28 @@ void appA() {
     address.sin_port = htons(8080);
 
     // 바인딩
-    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
+    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0)
+    {
         perror("bind failed");
         // return 1;
     }
 
     // 수신 대기
-    if (listen(server_fd, 3) < 0) {
+    if (listen(server_fd, 3) < 0)
+    {
         perror("listen failed");
         // return 1;
     }
 
     // 클라이언트 연결 대기 및 처리
-    if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
+    if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0)
+    {
         perror("accept failed");
         // return 1;
     }
 
-    while (true) {
+    while (true)
+    {
 
         // 클라이언트로부터 데이터 읽기
         read(new_socket, g_tcpBuffer, 1024);
@@ -55,14 +61,15 @@ void appA() {
 }
 
 #if 0
-void appB() {
-
+void appB()
+{
     int udp_socket;
     struct sockaddr_in server_address;
     // char buffer[1024];
 
     // 소켓 생성
-    if ((udp_socket = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
+    if ((udp_socket = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+    {
         perror("socket");
         // return 1;
     }
@@ -71,13 +78,15 @@ void appB() {
     server_address.sin_port = htons(8081);
     server_address.sin_addr.s_addr = inet_addr("172.24.158.228");
 
-    while (true) {
+    while (true)
+    {
         // 앱에서 메시지 받기
         std::string receivedMessage = g_tcpBuffer;
 
         // 데이터 전송
         ssize_t bytes_sent = sendto(udp_socket, receivedMessage, strlen(receivedMessage), 0, (struct sockaddr *)&server_address, sizeof(server_address));
-        if (bytes_sent == -1) {
+        if (bytes_sent == -1)
+        {
             perror("sendto");
             // return 1;
         }
@@ -89,7 +98,8 @@ void appB() {
 }
 #endif
 
-int main() {
+int main()
+{
 
     // App A 작업 수행
     std::cout << "App A is running..." << std::endl;
