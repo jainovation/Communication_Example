@@ -54,6 +54,7 @@ void appA() {
     }
 }
 
+#if 0
 void appB() {
 
     int udp_socket;
@@ -86,20 +87,21 @@ void appB() {
         std::this_thread::sleep_for(std::chrono::seconds(5));
     }
 }
+#endif
 
 int main() {
 
     // App A 작업 수행
     std::cout << "App A is running..." << std::endl;
     // App B 작업 수행
-    std::cout << "App B is running..." << std::endl;
+    // std::cout << "App B is running..." << std::endl;
 
     std::thread threadA(appA);
-    std::thread threadB(appB);
+    // std::thread threadB(appB);
 
     // 스레드 대기
     threadA.join();
-    threadB.join();
+    // threadB.join();
 
     return 0;
 }
