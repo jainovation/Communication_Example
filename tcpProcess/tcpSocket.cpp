@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include "../include/common.h"
 
 #define QUEUE_NAME "/my_message_queue"
 #define MAX_MSG_SIZE 1024
@@ -43,7 +44,7 @@ void appA()
 
         mq_close(mq);
 
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        std::this_thread::sleep_for(std::chrono::milliseconds(TIME_DELAY * 10));
     }
 }
 
@@ -67,7 +68,7 @@ void appB()
     server_address.sin_port = htons(8080);
 
     // IP 주소 설정
-    if (inet_pton(AF_INET, "172.24.158.228", &server_address.sin_addr) <= 0)
+    if (inet_pton(AF_INET, "172.24.144.202", &server_address.sin_addr) <= 0)
     {
         perror("Invalid address/ Address not supported");
         // return 1;
@@ -92,7 +93,7 @@ void appB()
 
         // close(client_fd);
 
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        std::this_thread::sleep_for(std::chrono::milliseconds(TIME_DELAY * 10));
     }
 }
 

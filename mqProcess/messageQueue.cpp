@@ -4,9 +4,16 @@
 #include <mqueue.h>
 #include <thread>
 #include <chrono>
+#include "../include/common.h"
 
 #define QUEUE_NAME "/my_message_queue"
 #define MAX_MSG_SIZE 1024
+
+//********************************//
+//                                //
+// MQ -> TCP -> UNIX -> UDP -> SM //
+//                                //
+//********************************//
 
 void appA()
 {
@@ -53,7 +60,7 @@ void appA()
 
         mq_close(mq);
 
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        std::this_thread::sleep_for(std::chrono::milliseconds(TIME_DELAY * 10));
     }
     mq_unlink(QUEUE_NAME);
 

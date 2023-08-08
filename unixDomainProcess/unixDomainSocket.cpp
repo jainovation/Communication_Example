@@ -6,6 +6,10 @@
 #include <arpa/inet.h>
 #include <thread>
 #include <chrono>
+#include <sys/un.h>
+#include "../include/common.h"
+
+#define SOCKET_PATH "/tmp/my_unix_socket"
 
 char g_tcpBuffer[1024];
 
@@ -53,47 +57,68 @@ void appA()
     {
         // 클라이언트로부터 데이터 읽기
         read(new_socket, g_tcpBuffer, 1024);
-        std::cout << "Received message from tcpTask app: " << g_tcpBuffer << std::endl;
+        std::cout << "Received message from tcpTask: " << g_tcpBuffer << std::endl;
         std::cout << "cnt: " << cnt++ << std::endl;
 
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        std::this_thread::sleep_for(std::chrono::milliseconds(TIME_DELAY * 10));
     }
 }
 
 void appB()
 {
-    int udp_socket;
-    struct sockaddr_in server_address;
-    // char buffer[1024];
+    int server_socket;
+    struct sockaddr_un server_addr;
 
     // 소켓 생성
-    if ((udp_socket = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+    server_socket = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (server_socket == -1)
     {
         perror("socket");
         // return 1;
     }
 
-    server_address.sin_family = AF_INET;
-    server_address.sin_port = htons(8081);
-    server_address.sin_addr.s_addr = inet_addr("172.24.158.228");
+    memset(&server_addr, 0, sizeof(struct sockaddr_un));
+    server_addr.sun_family = AF_UNIX;
+    strncpy(server_addr.sun_path, SOCKET_PATH, sizeof(server_addr.sun_path) - 1);
+
+    // 소켓 바인딩
+    if (bind(server_socket, (struct sockaddr *)&server_addr, sizeof(struct sockaddr_un)) == -1)
+    {
+        perror("bind");
+        close(server_socket);
+        // return 1;
+    }
+
+    // 클라이언트 연결 대기
+    if (listen(server_socket, 5) == -1)
+    {
+        perror("listen");
+        close(server_socket);
+        // return 1;
+    }
+
+    // 클라이언트 연결 수락
+    int client_socket = accept(server_socket, NULL, NULL);
+    if (client_socket == -1)
+    {
+        perror("accept");
+        close(server_socket);
+        // return 1;
+    }
 
     while (true)
     {
-        // 앱에서 메시지 받기
-        std::string receivedMessage = g_tcpBuffer;
-
         // 데이터 전송
-        ssize_t bytes_sent = sendto(udp_socket, receivedMessage.c_str(), receivedMessage.size(), 0, (struct sockaddr *)&server_address, sizeof(server_address));
-        if (bytes_sent == -1)
-        {
-            perror("sendto");
-            // return 1;
-        }
+        const char *message = g_tcpBuffer;
+        send(client_socket, message, strlen(message), 0);
 
-        std::cout << "Message sent to udpTask app" << std::endl;
+        std::cout << "Message sent to UDPTask: " << message << std::endl;
 
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        std::this_thread::sleep_for(std::chrono::milliseconds(TIME_DELAY * 10));
     }
+    // 연결 종료
+    close(client_socket);
+    close(server_socket);
 }
 
 int main()

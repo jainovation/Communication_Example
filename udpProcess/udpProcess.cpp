@@ -1,21 +1,72 @@
 #include <iostream>
 #include <cstring>
+#include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
+#include <sys/un.h>
 #include <thread>
 #include <chrono>
+#include "../include/common.h"
 
-#include <sys/ipc.h>
-#include <sys/shm.h>
+#define SOCKET_PATH "/tmp/my_unix_socket"
 
-char g_unixbuffer[1024];
+char g_unixBuffer[1024];
 
 void appA()
 {
-    int udp_socket;
-    struct sockaddr_in server_address, client_address;
-    // char buffer[1024];
+    int client_socket;
+    struct sockaddr_un server_addr;
     int cnt = 0;
+
+    // 소켓 생성
+    client_socket = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (client_socket == -1)
+    {
+        perror("socket");
+        // return 1;
+    }
+
+    memset(&server_addr, 0, sizeof(struct sockaddr_un));
+    server_addr.sun_family = AF_UNIX;
+    strncpy(server_addr.sun_path, SOCKET_PATH, sizeof(server_addr.sun_path) - 1);
+
+    // 서버에 연결
+    if (connect(client_socket, (struct sockaddr *)&server_addr, sizeof(struct sockaddr_un)) == -1)
+    {
+        perror("connect");
+        close(client_socket);
+        // return 1;
+    }
+
+    while (true)
+    {
+        // 데이터 수신
+        // char buffer[1024];
+        ssize_t bytes_received = recv(client_socket, g_unixBuffer, sizeof(g_unixBuffer), 0);
+        if (bytes_received == -1)
+        {
+            perror("recv");
+            close(client_socket);
+            // return 1;
+        }
+
+        // 수신된 데이터 출력
+        g_unixBuffer[bytes_received] = '\0';
+        std::cout << "Received message from unixDomainTask: " << g_unixBuffer << std::endl;
+        std::cout << "cnt: " << cnt++ << std::endl;
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(TIME_DELAY * 10));
+    }
+    // 연결 종료
+    close(client_socket);
+}
+
+void appB()
+{
+    int udp_socket;
+    struct sockaddr_in server_address;
+    // char buffer[1024];
 
     // 소켓 생성
     if ((udp_socket = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
@@ -25,55 +76,26 @@ void appA()
     }
 
     server_address.sin_family = AF_INET;
-    server_address.sin_addr.s_addr = INADDR_ANY;
-    server_address.sin_port = htons(8081); // 포트 번호
-
-    // 소켓 바인딩
-    if (bind(udp_socket, (struct sockaddr *)&server_address, sizeof(server_address)) == -1)
-    {
-        perror("bind");
-        // return 1;
-    }
-
-    socklen_t client_address_len = sizeof(client_address);
+    server_address.sin_port = htons(8081);
+    server_address.sin_addr.s_addr = inet_addr("172.24.144.202");
 
     while (true)
     {
-        // 클라이언트로부터 데이터 수신
-        ssize_t bytes_received = recvfrom(udp_socket, g_unixbuffer, sizeof(g_unixbuffer), 0, (struct sockaddr *)&client_address, &client_address_len);
-        if (bytes_received == -1)
+        // 앱에서 메시지 받기
+        std::string receivedMessage = g_unixBuffer;
+
+        // 데이터 전송
+        ssize_t bytes_sent = sendto(udp_socket, receivedMessage.c_str(), receivedMessage.size(), 0, (struct sockaddr *)&server_address, sizeof(server_address));
+        if (bytes_sent == -1)
         {
-            perror("recvfrom");
-            // continue;
+            perror("sendto");
+            // return 1;
         }
 
-        std::cout << "Received message from unixTask: " << g_unixbuffer << std::endl;
-        std::cout << "cnt: " << cnt++ << std::endl;
+        std::cout << "Message sent to shared memory Task: " << receivedMessage <<std::endl;
 
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        std::this_thread::sleep_for(std::chrono::milliseconds(TIME_DELAY * 10));
     }
-}
-
-void appB()
-{
-    key_t key = ftok("shared_memory_key", 65); // 키 생성
-
-    // 공유 메모리 생성 및 연결
-    int shmid = shmget(key, 1024, 0666 | IPC_CREAT);
-    char *shmaddr = (char *)shmat(shmid, (void *)0, 0);
-
-    while (true)
-    {
-        // 데이터 쓰기
-        std::string message = g_unixbuffer;
-        strcpy(shmaddr, message.c_str());
-
-        std::cout << "Message sent to shared Memory" << std::endl;
-
-        std::this_thread::sleep_for(std::chrono::seconds(5));
-    }
-    // 연결 해제
-    shmdt(shmaddr);
 }
 
 int main()
