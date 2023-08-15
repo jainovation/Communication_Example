@@ -1,80 +1,94 @@
+#include "messageQueue.h"
 #include <iostream>
 #include <fstream>
 #include <cstring>
-#include <mqueue.h>
-#include <thread>
-#include <chrono>
+#include <signal.h>
 #include "../include/common.h"
 
-#define QUEUE_NAME "/my_message_queue"
-#define MAX_MSG_SIZE 1024
+MessageQueueApp app;
 
-//********************************//
-//                                //
-// MQ -> TCP -> UNIX -> UDP -> SM //
-//                                //
-//********************************//
-
-void appA()
+static void exitHandler(int signalNum)
 {
-    // 메시지 큐 생성
-    mqd_t mq;
+    if (signalNum == SIGINT || signalNum == SIGTERM || signalNum == SIGKILL)
+    {
+        mq_close(app.getMQdata());
+        mq_unlink(QUEUE_NAME);
+    }
+}
+
+int MessageQueueApp::getMQdata()
+{
+    return m_mq;
+}
+
+MessageQueueApp::MessageQueueApp()
+{
     struct mq_attr attr;
-    int cnt = 0;
 
     attr.mq_flags = 0;
-    attr.mq_maxmsg = 10;            // 최대 메시지 개수
-    attr.mq_msgsize = MAX_MSG_SIZE; // 메시지 최대 크기
+    attr.mq_maxmsg = 10;
+    attr.mq_msgsize = MAX_MSG_SIZE;
     attr.mq_curmsgs = 0;
 
+    m_mq = mq_open(QUEUE_NAME, O_WRONLY | O_CREAT, 0644, &attr);
+    if (m_mq == -1)
+    {
+        perror("mq_open");
+    }
+}
+
+MessageQueueApp::~MessageQueueApp()
+{
+    mq_close(m_mq);
+    mq_unlink(QUEUE_NAME);
+}
+
+void MessageQueueApp::appA()
+{
     while (true)
     {
-        mq = mq_open(QUEUE_NAME, O_WRONLY | O_CREAT, 0644, &attr);
-        if (mq == -1)
+        std::string fileName;
+        std::cout << "전송할 파일명을 입력해주세요.: ";
+        std::cin >> fileName;
+
+        if (fileName == "q")
         {
-            perror("mq_open");
-            // return 1;
+            break;
         }
 
-        // 파일에서 문자 읽기
-        std::ifstream file("input.txt");
+        std::ifstream file(fileName);
         if (!file.is_open())
         {
             std::cerr << "Failed to open input file." << std::endl;
-            // return 1;
         }
 
         std::string message;
-        std::getline(file, message);
-        file.close();
-
-        // 메시지 전송
-        if (mq_send(mq, message.c_str(), message.size() + 1, 0) == -1)
+        while (getline(file, message))
         {
-            perror("mq_send");
-            // return 1;
+            if (mq_send(m_mq, message.c_str(), message.size() + 1, 0) == -1)
+            {
+                perror("mq_send");
+            }
+            std::cout << "Message sent to queue: " << message << std::endl;
         }
-
-        std::cout << "Message sent to queue: " << message << std::endl;
-        std::cout << "cnt: " << cnt++ << std::endl;
-
-        mq_close(mq);
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(TIME_DELAY * 10));
+        file.close();
     }
-    mq_unlink(QUEUE_NAME);
+}
 
+void MessageQueueApp::run()
+{
+    signal(SIGINT, exitHandler);
+    signal(SIGTERM, exitHandler);
+    signal(SIGKILL, exitHandler);
+
+    appA();
 }
 
 int main()
 {
-    // App 작업 수행
     std::cout << "App MQ is running..." << std::endl;
 
-    std::thread threadA(appA);
-
-    // 스레드 대기
-    threadA.join();
+    app.run();
 
     return 0;
 }

@@ -1,96 +1,123 @@
-#include <iostream>
-#include <cstring>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <thread>
-#include <chrono>
+#include "sharedMemory.h"
 
-#include <sys/ipc.h>
-#include <sys/shm.h>
+SharedMemoryApp app;
 
-#include "../include/common.h"
-
-char g_udpbuffer[1024];
-
-void appA()
+static void exitHandler(int signalNum)
 {
-    int udp_socket;
-    struct sockaddr_in server_address, client_address;
-    // char buffer[1024];
-    int cnt = 0;
+    if (signalNum == SIGINT || signalNum == SIGTERM || signalNum == SIGKILL)
+    {
+        // close(m_client_socket);
+        // close(m_server_socket);
+    }
+}
 
+SharedMemoryApp::SharedMemoryApp()
+{
+    m_udp_socket = -1;
+    m_shm_key = 0;
+    m_shmid = -1;
+    m_shmaddr = nullptr;
+}
+
+SharedMemoryApp::~SharedMemoryApp()
+{
+    if (m_udp_socket != -1)
+    {
+        close(m_udp_socket);
+    }
+    if (m_shmaddr != nullptr)
+    {
+        shmdt(m_shmaddr);
+    }
+}
+
+void SharedMemoryApp::SharedMemoryinit()
+{
+    m_shm_key = ftok("shared_memory_key", 65); // 키 생성
+
+    // 공유 메모리 생성 및 연결
+    m_shmid = shmget(m_shm_key, 1024, 0666 | IPC_CREAT);
+    m_shmaddr = (char *)shmat(m_shmid, (void *)0, 0);
+
+    std::cerr << "shared memory init" << std::endl;
+}
+
+void SharedMemoryApp::UDPinit()
+{
     // 소켓 생성
-    if ((udp_socket = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+    if ((m_udp_socket = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
     {
         perror("socket");
         // return 1;
     }
 
-    server_address.sin_family = AF_INET;
-    server_address.sin_addr.s_addr = INADDR_ANY;
-    server_address.sin_port = htons(8081); // 포트 번호
+    m_server_address.sin_family = AF_INET;
+    m_server_address.sin_addr.s_addr = INADDR_ANY;
+    m_server_address.sin_port = htons(23456); // 포트 번호
 
     // 소켓 바인딩
-    if (bind(udp_socket, (struct sockaddr *)&server_address, sizeof(server_address)) == -1)
+    if (bind(m_udp_socket, (struct sockaddr *)&m_server_address, sizeof(m_server_address)) == -1)
     {
         perror("bind");
         // return 1;
     }
 
-    socklen_t client_address_len = sizeof(client_address);
+    m_client_address_len = sizeof(m_client_address);
 
+    std::cerr << "udp Socket Connected" << std::endl;
+}
+
+void SharedMemoryApp::appA()
+{
     while (true)
     {
+        memset(m_udpBuffer, 0x00, sizeof(m_udpBuffer));
+
         // 클라이언트로부터 데이터 수신
-        ssize_t bytes_received = recvfrom(udp_socket, g_udpbuffer, sizeof(g_udpbuffer), 0, (struct sockaddr *)&client_address, &client_address_len);
+        ssize_t bytes_received = recvfrom(m_udp_socket, m_udpBuffer, sizeof(m_udpBuffer), 0, (struct sockaddr *)&m_client_address, &m_client_address_len);
         if (bytes_received == -1)
         {
             perror("recvfrom");
-            // continue;
+            sleep(1);
+            // break;
         }
+        else
+        {
+            // 데이터 쓰기
+            std::string message = m_udpBuffer;
+            // strcpy(m_shmaddr, message.c_str());
 
-        std::cout << "Received message from unixTask: " << g_udpbuffer << std::endl;
-        std::cout << "cnt: " << cnt++ << std::endl;
+            // std::cout << "Received message from unixTask: " << m_udpBuffer << std::endl;
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(TIME_DELAY * 10));
+            // 데이터 쓰기
+            int nextIndex = *reinterpret_cast<int *>(m_shmaddr);
+            if (nextIndex + message.size() + 1 <= 1024)
+            {
+                std::strcpy(m_shmaddr + sizeof(int) + nextIndex, message.c_str());
+                *reinterpret_cast<int *>(m_shmaddr) = nextIndex + message.size() + 1;
+                std::cout << "Data written to shared memory: " << message << std::endl;
+            }
+        }
     }
 }
 
-void appB()
+void SharedMemoryApp::run()
 {
-    key_t key = ftok("shared_memory_key", 65); // 키 생성
+    std::cout << "App SharedMemory is running..." << std::endl;
 
-    // 공유 메모리 생성 및 연결
-    int shmid = shmget(key, 1024, 0666 | IPC_CREAT);
-    char *shmaddr = (char *)shmat(shmid, (void *)0, 0);
+    signal(SIGINT, exitHandler);
+    signal(SIGTERM, exitHandler);
+    signal(SIGKILL, exitHandler);
 
-    while (true)
-    {
-        // 데이터 쓰기
-        std::string message = g_udpbuffer;
-        strcpy(shmaddr, message.c_str());
+    UDPinit();
+    SharedMemoryinit();
 
-        std::cout << "Message sent to shared Memory: " << message << std::endl;
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(TIME_DELAY * 10));
-    }
-    // 연결 해제
-    shmdt(shmaddr);
+    appA();
 }
 
 int main()
 {
-    // App A 작업 수행
-    std::cout << "App A is running..." << std::endl;
-    // App B 작업 수행
-    std::cout << "App B is running..." << std::endl;
-
-    std::thread threadA(appA);
-    std::thread threadB(appB);
-
-    // 스레드 대기
-    threadA.join();
-    threadB.join();
+    app.run();
 
     return 0;
 }

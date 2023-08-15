@@ -1,116 +1,133 @@
-#include <iostream>
-#include <mqueue.h>
-#include <thread>
-#include <chrono>
-#include <cstring>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include "../include/common.h"
+#include "tcpSocket.h"
 
 #define QUEUE_NAME "/my_message_queue"
 #define MAX_MSG_SIZE 1024
 
-char g_mqBuffer[MAX_MSG_SIZE];
+TcpSocketApp app;
 
-void appA()
+static void exitHandler(int signalNum)
 {
-    // MQ 버퍼
-    mqd_t mq;
-    int cnt = 0;
-    // char mqBuffer[MAX_MSG_SIZE];
-
-    while (true)
+    if (signalNum == SIGINT || signalNum == SIGTERM || signalNum == SIGKILL)
     {
-        // 메시지 큐 열기
-        mq = mq_open(QUEUE_NAME, O_RDONLY);
-        if (mq == -1)
-        {
-            perror("mq_open");
-            // return 1;
-        }
-
-        // 메시지 받기
-        ssize_t bytes_read = mq_receive(mq, g_mqBuffer, MAX_MSG_SIZE, nullptr);
-        if (bytes_read == -1)
-        {
-            perror("mq_receive");
-            // return 1;
-        }
-
-        std::cout << "Received message from queue: " << g_mqBuffer << std::endl;
-        std::cout << "cnt: " << cnt++ << std::endl;
-
-        mq_close(mq);
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(TIME_DELAY * 10));
+        mq_close(app.getMQdata());
+        close(app.getTCPClient());
     }
 }
 
-void appB()
+int TcpSocketApp::getMQdata()
 {
-    // TCP 버퍼
-    int client_fd;
-    struct sockaddr_in server_address;
-    int cnt = 0;
-    // char tcpBuffer[1024];
+    return m_mq;
+}
 
+int TcpSocketApp::getTCPClient()
+{
+    return m_client_fd;
+}
+
+TcpSocketApp::TcpSocketApp()
+{
+    m_mq = -1;
+    m_client_fd = -1;
+}
+
+TcpSocketApp::~TcpSocketApp()
+{
+    if (m_mq != -1)
+    {
+        mq_close(m_mq);
+        mq_unlink(QUEUE_NAME);
+    }
+    if (m_client_fd != -1)
+    {
+        close(m_client_fd);
+    }
+}
+
+void TcpSocketApp::MQinit()
+{
+    // 메시지 큐 열기
+    m_mq = mq_open(QUEUE_NAME, O_RDONLY);
+    if (m_mq == -1)
+    {
+        perror("mq_open");
+        // return 1;
+    }
+}
+
+void TcpSocketApp::TCPinit()
+{
     /* TCP */
     // 소켓 생성
-    if ((client_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0)
+    if ((m_client_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0)
     {
         perror("socket failed");
         // return 1;
     }
 
-    server_address.sin_family = AF_INET;
-    server_address.sin_port = htons(8080);
+    m_server_address.sin_family = AF_INET;
+    m_server_address.sin_port = htons(12345);
 
     // IP 주소 설정
-    if (inet_pton(AF_INET, "172.24.144.202", &server_address.sin_addr) <= 0)
+    if (inet_pton(AF_INET, "127.0.0.1", &m_server_address.sin_addr) <= 0)
     {
         perror("Invalid address/ Address not supported");
         // return 1;
     }
 
     // 서버에 연결
-    if (connect(client_fd, (struct sockaddr *)&server_address, sizeof(server_address)) < 0)
+    while (connect(m_client_fd, (struct sockaddr *)&m_server_address, sizeof(m_server_address)) < 0)
+    // if (connect(m_client_fd, (struct sockaddr *)&m_server_address, sizeof(m_server_address)) < 0)
     {
         perror("Connection failed");
+        sleep(3);
         // return 1;
     }
-    /* _TCP */
+    std::cerr << "TCP Connected" << std::endl;
+}
 
+void TcpSocketApp::appA()
+{
     while (true)
     {
-        // 앱에서 메시지 받기
-        std::string receivedMessage = g_mqBuffer;
+        memset(m_mqBuffer, 0x00, sizeof(m_mqBuffer));
+        // 메시지 받기
+        ssize_t bytes_read = mq_receive(m_mq, m_mqBuffer, MAX_MSG_SIZE, nullptr);
+        if (bytes_read == -1)
+        {
+            perror("mq_receive");
+            sleep(1);
+            // return 1;
+        }
+        else
+        {
+            // 메시지 전송
+            if (send(m_client_fd, m_mqBuffer, sizeof(m_mqBuffer), 0) == -1)
+                std::cout << "send error occur" << std::endl;
 
-        // 메시지 전송
-        send(client_fd, receivedMessage.c_str(), receivedMessage.size(), 0);
-        std::cout << "Message sent to unixDomainTask app: " << receivedMessage << std::endl;
-
-        // close(client_fd);
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(TIME_DELAY * 10));
+            else
+                std::cout << "send message to tcp: " << m_mqBuffer << std::endl;
+            // std::cout << "Message sent to unixDomainTask app: " << receivedMessage << std::endl;
+        }
     }
+}
+
+void TcpSocketApp::run()
+{
+    signal(SIGINT, exitHandler);
+    signal(SIGTERM, exitHandler);
+    signal(SIGKILL, exitHandler);
+
+    MQinit();
+    TCPinit();
+
+    appA();
 }
 
 int main()
 {
+    std::cout << "App TCP is running..." << std::endl;
 
-    // App A 작업 수행
-    std::cout << "App A is running..." << std::endl;
-    // App B 작업 수행
-    std::cout << "App B is running..." << std::endl;
-
-    std::thread threadA(appA);
-    std::thread threadB(appB);
-
-    // 스레드 대기
-    threadA.join();
-    threadB.join();
+    app.run();
 
     return 0;
 }
