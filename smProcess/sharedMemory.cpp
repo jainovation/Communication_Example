@@ -37,7 +37,10 @@ void SharedMemoryApp::SharedMemoryinit()
 
     // 공유 메모리 생성 및 연결
     m_shmid = shmget(m_shm_key, 1024, 0666 | IPC_CREAT);
+    std::cerr << "shared memory id:" << m_shmid << std::endl;
     m_shmaddr = (char *)shmat(m_shmid, (void *)0, 0);
+
+    memset(m_shmaddr, 0x00, 1024); // 공유 메모리 초기화
 
     std::cerr << "shared memory init" << std::endl;
 }
@@ -67,6 +70,20 @@ void SharedMemoryApp::UDPinit()
     std::cerr << "udp Socket Connected" << std::endl;
 }
 
+void SharedMemoryApp::sendDataToSharedMemory(const std::string &data)
+{
+    // std::lock_guard<std::mutex> lock(m_mutex);
+    // 데이터 길이가 공유 메모리 크기보다 작을 경우에만 쓰기
+    if (data.size() < 1024) {
+        // memset(m_shmaddr, 0x00, 1024); // 공유 메모리 초기화
+        strcpy(m_shmaddr, data.c_str()); // 데이터 쓰기
+    }
+}
+
+bool SharedMemoryApp::isSharedMemoryEmpty() {
+    return m_shmaddr[0] == '\0';
+}
+
 void SharedMemoryApp::appA()
 {
     while (true)
@@ -87,9 +104,10 @@ void SharedMemoryApp::appA()
             std::string message = m_udpBuffer;
             // strcpy(m_shmaddr, message.c_str());
 
-            // std::cout << "Received message from unixTask: " << m_udpBuffer << std::endl;
+            std::cout << "Received message from unixTask: " << m_udpBuffer << std::endl;
 
             // 데이터 쓰기
+        #if 0
             int nextIndex = *reinterpret_cast<int *>(m_shmaddr);
             if (nextIndex + message.size() + 1 <= 1024)
             {
@@ -97,6 +115,36 @@ void SharedMemoryApp::appA()
                 *reinterpret_cast<int *>(m_shmaddr) = nextIndex + message.size() + 1;
                 std::cout << "Data written to shared memory: " << message << std::endl;
             }
+        #else
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_dataQueue.push(message);
+        #endif
+        }
+
+
+    }
+}
+
+void SharedMemoryApp::appB()
+{
+    while(true)
+    {
+        if (isSharedMemoryEmpty())
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if(!m_dataQueue.empty())
+            {
+                sendDataToSharedMemory(m_dataQueue.front());
+                m_dataQueue.pop();
+            }
+            else
+            {
+
+            }
+        }
+        else
+        {
+            // std::cerr << m_shmaddr << std::endl;
         }
     }
 }
@@ -112,7 +160,17 @@ void SharedMemoryApp::run()
     UDPinit();
     SharedMemoryinit();
 
-    appA();
+    // appA();
+
+    // appA를 쓰레드로 실행
+    std::thread threadA(&SharedMemoryApp::appA, this);
+
+    // appB를 쓰레드로 실행
+    std::thread threadB(&SharedMemoryApp::appB, this);
+
+    // 스레드 대기
+    threadA.join();
+    threadB.join();
 }
 
 int main()

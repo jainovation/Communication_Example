@@ -10,6 +10,8 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <signal.h>
+#include <queue>
+#include <mutex>
 #include "../include/common.h"
 
 class SharedMemoryApp
@@ -25,6 +27,8 @@ private:
     key_t m_shm_key;
     int m_shmid;
     char *m_shmaddr;
+    std::mutex m_mutex;
+    std::queue<std::string> m_dataQueue;
 
     char m_udpBuffer[1024];
     int m_udp_socket;
@@ -33,6 +37,9 @@ private:
     socklen_t m_client_address_len;
 
     void appA();
+    void appB();
+    void sendDataToSharedMemory(const std::string &data);
+    bool isSharedMemoryEmpty();
 };
 
 #endif // SHAREDMEMORYAPP_H
