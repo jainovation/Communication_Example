@@ -5,13 +5,10 @@
 
 TcpSocketApp app;
 
-static void exitHandler(int signalNum)
-{
-    if (signalNum == SIGINT || signalNum == SIGTERM || signalNum == SIGKILL)
-    {
-        mq_close(app.getMQdata());
-        close(app.getTCPClient());
-    }
+void TcpSocketApp::setExitFlag() {
+    m_exitFlag.store(true);
+    mq_close(app.getMQdata());
+    close(app.getTCPClient());
 }
 
 int TcpSocketApp::getMQdata()
@@ -87,7 +84,7 @@ void TcpSocketApp::TCPinit()
 
 void TcpSocketApp::appA()
 {
-    while (true)
+    while (!m_exitFlag.load())
     {
         memset(m_mqBuffer, 0x00, sizeof(m_mqBuffer));
         // 메시지 받기
@@ -113,9 +110,10 @@ void TcpSocketApp::appA()
 
 void TcpSocketApp::run()
 {
-    signal(SIGINT, exitHandler);
-    signal(SIGTERM, exitHandler);
-    signal(SIGKILL, exitHandler);
+    signal(SIGINT, [](int) {
+        std::cout << "Exiting..." << std::endl;
+        app.setExitFlag(); // 종료 플래그 설정
+    });
 
     MQinit();
     TCPinit();

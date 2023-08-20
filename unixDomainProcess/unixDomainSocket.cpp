@@ -2,13 +2,10 @@
 
 UnixSocketApp app;
 
-static void exitHandler(int signalNum)
-{
-    if (signalNum == SIGINT || signalNum == SIGTERM || signalNum == SIGKILL)
-    {
-        // close(m_client_socket);
-        // close(m_server_socket);
-    }
+void UnixSocketApp::setExitFlag() {
+    m_exitFlag.store(true);
+    close(m_client_socket);
+    close(m_server_socket);
 }
 
 void UnixSocketApp::Unixinit()
@@ -121,7 +118,7 @@ UnixSocketApp::~UnixSocketApp()
 
 void UnixSocketApp::appA()
 {
-    while (true)
+    while (!m_exitFlag.load())
     {
         // 클라이언트로부터 데이터 읽기
         memset(m_tcpBuffer, 0x00, sizeof(m_tcpBuffer));
@@ -144,9 +141,10 @@ void UnixSocketApp::appA()
 
 void UnixSocketApp::run()
 {
-    signal(SIGINT, exitHandler);
-    signal(SIGTERM, exitHandler);
-    signal(SIGKILL, exitHandler);
+    signal(SIGINT, [](int) {
+        std::cout << "Exiting..." << std::endl;
+        app.setExitFlag(); // 종료 플래그 설정
+    });
 
     TCPinit();
     Unixinit();

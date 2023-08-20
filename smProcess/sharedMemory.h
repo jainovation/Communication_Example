@@ -13,6 +13,7 @@
 #include <queue>
 #include <mutex>
 #include "../include/common.h"
+#include <atomic>
 
 class SharedMemoryApp
 {
@@ -22,6 +23,7 @@ public:
     void SharedMemoryinit();
     void UDPinit();
     void run();
+    void setExitFlag(); // 종료 플래그 설정 함수
 
 private:
     key_t m_shm_key;
@@ -29,6 +31,7 @@ private:
     char *m_shmaddr;
     std::mutex m_mutex;
     std::queue<std::string> m_dataQueue;
+    std::atomic<bool> m_exitFlag; // 종료 플래그
 
     char m_udpBuffer[1024];
     int m_udp_socket;

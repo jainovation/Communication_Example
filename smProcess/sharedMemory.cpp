@@ -2,13 +2,8 @@
 
 SharedMemoryApp app;
 
-static void exitHandler(int signalNum)
-{
-    if (signalNum == SIGINT || signalNum == SIGTERM || signalNum == SIGKILL)
-    {
-        // close(m_client_socket);
-        // close(m_server_socket);
-    }
+void SharedMemoryApp::setExitFlag() {
+    m_exitFlag.store(true);
 }
 
 SharedMemoryApp::SharedMemoryApp()
@@ -86,7 +81,7 @@ bool SharedMemoryApp::isSharedMemoryEmpty() {
 
 void SharedMemoryApp::appA()
 {
-    while (true)
+    while (!m_exitFlag.load())
     {
         memset(m_udpBuffer, 0x00, sizeof(m_udpBuffer));
 
@@ -127,7 +122,7 @@ void SharedMemoryApp::appA()
 
 void SharedMemoryApp::appB()
 {
-    while(true)
+    while(!m_exitFlag.load())
     {
         if (isSharedMemoryEmpty())
         {
@@ -153,9 +148,10 @@ void SharedMemoryApp::run()
 {
     std::cout << "App SharedMemory is running..." << std::endl;
 
-    signal(SIGINT, exitHandler);
-    signal(SIGTERM, exitHandler);
-    signal(SIGKILL, exitHandler);
+    signal(SIGINT, [](int) {
+        std::cout << "Exiting..." << std::endl;
+        app.setExitFlag(); // 종료 플래그 설정
+    });
 
     UDPinit();
     SharedMemoryinit();

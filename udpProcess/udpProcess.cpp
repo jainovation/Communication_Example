@@ -4,13 +4,10 @@
 
 UdpSocketApp app;
 
-static void exitHandler(int signalNum)
-{
-    if (signalNum == SIGINT || signalNum == SIGTERM || signalNum == SIGKILL)
-    {
-        // close(m_client_socket);
-        // close(m_server_socket);
-    }
+void UdpSocketApp::setExitFlag() {
+    m_exitFlag.store(true);
+    close(m_client_socket);
+    // close(m_server_socket);
 }
 
 UdpSocketApp::UdpSocketApp()
@@ -74,7 +71,7 @@ void UdpSocketApp::UDPinit()
 
 void UdpSocketApp::appA()
 {
-    while (true)
+    while (!m_exitFlag.load())
     {
         memset(m_unixBuffer, 0x00, sizeof(m_unixBuffer));
 
@@ -110,9 +107,10 @@ void UdpSocketApp::appA()
 
 void UdpSocketApp::run()
 {
-    signal(SIGINT, exitHandler);
-    signal(SIGTERM, exitHandler);
-    signal(SIGKILL, exitHandler);
+    signal(SIGINT, [](int) {
+        std::cout << "Exiting..." << std::endl;
+        app.setExitFlag(); // 종료 플래그 설정
+    });
 
     Unixinit();
     UDPinit();

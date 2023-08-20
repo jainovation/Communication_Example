@@ -2,13 +2,8 @@
 
 OutputApp app;
 
-static void exitHandler(int signalNum)
-{
-    if (signalNum == SIGINT || signalNum == SIGTERM || signalNum == SIGKILL)
-    {
-        // close(m_client_socket);
-        // close(m_server_socket);
-    }
+void OutputApp::setExitFlag() {
+    m_exitFlag.store(true);
 }
 
 OutputApp::OutputApp()
@@ -81,7 +76,7 @@ void OutputApp::saveDataToFile()
 
 void OutputApp::appA()
 {
-    while (true)
+    while (!m_exitFlag.load())
     {
         // 공유 메모리에서 데이터 읽기
         std::string message = loadDataFromSharedMemory();
@@ -89,7 +84,7 @@ void OutputApp::appA()
         if (!message.empty())
         {
             // 데이터가 있는 경우에만 큐에 push
-            std::cerr << message << std::endl;
+            // std::cerr << message << std::endl;
             m_dataQueue.push(message);
             message.clear();
             saveDataToFile();
@@ -118,9 +113,10 @@ void OutputApp::run()
 {
     std::cout << "App Output is running..." << std::endl;
 
-    signal(SIGINT, exitHandler);
-    signal(SIGTERM, exitHandler);
-    signal(SIGKILL, exitHandler);
+    signal(SIGINT, [](int) {
+        std::cout << "Exiting..." << std::endl;
+        app.setExitFlag(); // 종료 플래그 설정
+    });
 
     Outputinit();
 

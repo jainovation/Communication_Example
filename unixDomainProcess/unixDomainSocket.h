@@ -13,6 +13,7 @@
 #include <cstring>
 #include <unistd.h>
 #include <sys/un.h>
+#include <atomic>
 
 #define SOCKET_PATH "/tmp/my_unix_socket"
 
@@ -24,12 +25,14 @@ public:
     void Unixinit();
     void TCPinit();
     void run();
+    void setExitFlag(); // 종료 플래그 설정 함수
 
 private:
     int m_server_fd;
     int m_new_socket;
     char m_tcpBuffer[1024];
     struct sockaddr_in m_address;
+    std::atomic<bool> m_exitFlag; // 종료 플래그
 
     //unix
     int m_server_socket;

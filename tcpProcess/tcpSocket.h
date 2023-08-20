@@ -11,6 +11,7 @@
 #include <arpa/inet.h>
 #include <signal.h>
 #include "../include/common.h"
+#include <atomic>
 
 #define MAX_MSG_SIZE 1024
 
@@ -24,10 +25,12 @@ public:
     int getTCPClient();
     void MQinit();
     void TCPinit();
+    void setExitFlag(); // 종료 플래그 설정 함수
 
 private:
     mqd_t m_mq;
     int m_client_fd;
+    std::atomic<bool> m_exitFlag; // 종료 플래그
 
     // MQ 버퍼
     char m_mqBuffer[MAX_MSG_SIZE];

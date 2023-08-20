@@ -7,13 +7,10 @@
 
 MessageQueueApp app;
 
-static void exitHandler(int signalNum)
-{
-    if (signalNum == SIGINT || signalNum == SIGTERM || signalNum == SIGKILL)
-    {
-        mq_close(app.getMQdata());
-        mq_unlink(QUEUE_NAME);
-    }
+void MessageQueueApp::setExitFlag() {
+    m_exitFlag.store(true);
+    mq_close(app.getMQdata());
+    mq_unlink(QUEUE_NAME);
 }
 
 int MessageQueueApp::getMQdata()
@@ -45,7 +42,7 @@ MessageQueueApp::~MessageQueueApp()
 
 void MessageQueueApp::appA()
 {
-    while (true)
+    while (!m_exitFlag.load())
     {
         std::string fileName;
         std::cout << "전송할 파일명을 입력해주세요.: ";
@@ -77,9 +74,11 @@ void MessageQueueApp::appA()
 
 void MessageQueueApp::run()
 {
-    signal(SIGINT, exitHandler);
-    signal(SIGTERM, exitHandler);
-    signal(SIGKILL, exitHandler);
+    // Ctrl+C로 종료 시그널 처리를 위한 핸들러 등록
+    signal(SIGINT, [](int) {
+        std::cout << "Exiting..." << std::endl;
+        app.setExitFlag(); // 종료 플래그 설정
+    });
 
     appA();
 }
