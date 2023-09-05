@@ -1,8 +1,5 @@
 #include "tcpSocket.h"
 
-#define QUEUE_NAME "/my_message_queue"
-#define MAX_MSG_SIZE 1024
-
 TcpSocketApp app;
 
 void TcpSocketApp::setExitFlag() {
@@ -77,34 +74,88 @@ void TcpSocketApp::TCPinit()
     {
         perror("Connection failed");
         sleep(3);
-        // return 1;
     }
     std::cerr << "TCP Connected" << std::endl;
 }
 
+bool TcpSocketApp::receiveMessage(Message_t &message)
+{
+    unsigned int prio;
+    char receivedMessage[sizeof(Message_t)];
+
+    ssize_t bytesRead = mq_receive(m_mq, receivedMessage, sizeof(receivedMessage), &prio);
+    if (bytesRead == -1)
+    {
+        std::cerr << "Error: Unable to receive message" << std::endl;
+        return false;
+    }
+
+    memcpy(&message, receivedMessage, sizeof(message));
+
+    return true;
+}
+
+bool TcpSocketApp::sendMessage(const Message_t &message)
+{
+    char sendMessage[sizeof(Message_t)];
+
+    memcpy(&sendMessage, &message, sizeof(sendMessage));
+
+    if (send(m_client_fd, sendMessage, sizeof(sendMessage), 0) == -1)
+    {
+        std::cout << "send error occur" << std::endl;
+        // return false;
+        throw false;
+    }
+    else
+    {
+        std::cout << "Message sent to unixDomainTask app: " << message.data << std::endl;
+    }
+    return true;
+}
+
 void TcpSocketApp::appA()
 {
+    bool status = true;
+
     while (!m_exitFlag.load())
     {
-        memset(m_mqBuffer, 0x00, sizeof(m_mqBuffer));
+        memset(&m_receivedMessage, 0x00, sizeof(m_receivedMessage));
+
         // 메시지 받기
-        ssize_t bytes_read = mq_receive(m_mq, m_mqBuffer, MAX_MSG_SIZE, nullptr);
-        if (bytes_read == -1)
+        status = receiveMessage(m_receivedMessage);
+
+        if (status == false)
         {
             perror("mq_receive");
-            sleep(1);
-            // return 1;
+            throw false;
         }
         else
         {
             // 메시지 전송
-            if (send(m_client_fd, m_mqBuffer, sizeof(m_mqBuffer), 0) == -1)
-                std::cout << "send error occur" << std::endl;
-
-            else
-                std::cout << "send message to tcp: " << m_mqBuffer << std::endl;
-            // std::cout << "Message sent to unixDomainTask app: " << receivedMessage << std::endl;
+            sendMessage(m_receivedMessage);
         }
+        saveDataToFile();
+    }
+}
+
+void TcpSocketApp::saveDataToFile()
+{
+    // 헤더(header), 본문(data), 테일(tail) 추출
+    int textLength = atoi(m_receivedMessage.header);
+    std::string data(m_receivedMessage.data, textLength);
+
+    std::ofstream outputFile("received_data.txt", std::ios::app);
+    if (outputFile.is_open())
+    {
+        outputFile << data << std::endl;
+
+        outputFile.close();
+        // std::cout << "Data saved to received_data.txt" << std::endl;
+    }
+    else
+    {
+        std::cerr << "Unable to open the file" << std::endl;
     }
 }
 
@@ -125,7 +176,14 @@ int main()
 {
     std::cout << "App TCP is running..." << std::endl;
 
-    app.run();
+    try
+    {
+        app.run();
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
 
     return 0;
 }

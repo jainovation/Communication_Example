@@ -13,6 +13,7 @@
 #include <mutex>
 #include "../include/common.h"
 #include <atomic>
+#include <arpa/inet.h>
 
 class OutputApp
 {
@@ -23,10 +24,13 @@ public:
     void run();
     void setExitFlag(); // 종료 플래그 설정 함수
 
+    void TCPinit();
+
 private:
     key_t m_shm_key;
     int m_shmid;
-    char *m_shmaddr;
+    Message_t *m_shmaddr;
+    Message_t m_data;
     std::atomic<bool> m_exitFlag; // 종료 플래그
 
     std::mutex m_mutex;
@@ -35,6 +39,10 @@ private:
     std::string loadDataFromSharedMemory();
     void saveDataToFile();
     bool isSharedMemoryEmpty();
+
+    // TCP 버퍼
+    int m_client_fd;
+    struct sockaddr_in m_server_address;
 
     void appA();
 };

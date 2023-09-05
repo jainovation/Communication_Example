@@ -13,6 +13,7 @@
 #include <arpa/inet.h>
 #include "../include/common.h"
 #include <atomic>
+#include <fstream>
 
 class UdpSocketApp
 {
@@ -23,16 +24,24 @@ public:
     void UDPinit();
     void run();
     void setExitFlag(); // 종료 플래그 설정 함수
+    void saveDataToFile();
+    bool receiveMessage(Message_t& message);
+    bool sendMessage(const Message_t &message);
+    bool retryMessageFromUDP();
 
 private:
     int m_client_socket;
     struct sockaddr_un m_server_addr;
-    char m_unixBuffer[1024];
+    char m_unixBuffer[PACKET_SIZE];
     std::atomic<bool> m_exitFlag; // 종료 플래그
 
     //udp
     int m_udp_socket;
     struct sockaddr_in m_server_address;
+    socklen_t m_server_addr_len;
+    char m_ackBuffer[1];
+
+    Message_t m_receivedMessage;  // 수신한 메시지를 저장할 구조체
 
     void appA();
 };

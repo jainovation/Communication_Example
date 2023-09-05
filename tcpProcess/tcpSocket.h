@@ -13,8 +13,6 @@
 #include "../include/common.h"
 #include <atomic>
 
-#define MAX_MSG_SIZE 1024
-
 class TcpSocketApp
 {
 public:
@@ -26,18 +24,22 @@ public:
     void MQinit();
     void TCPinit();
     void setExitFlag(); // 종료 플래그 설정 함수
+    void saveDataToFile();
+    bool receiveMessage(Message_t& message);
+    bool sendMessage(const Message_t &message);
 
 private:
-    mqd_t m_mq;
-    int m_client_fd;
     std::atomic<bool> m_exitFlag; // 종료 플래그
 
     // MQ 버퍼
+    mqd_t m_mq;
     char m_mqBuffer[MAX_MSG_SIZE];
 
     // TCP 버퍼
+    int m_client_fd;
     struct sockaddr_in m_server_address;
 
+    Message_t m_receivedMessage;  // 수신한 메시지를 저장할 구조체
 
     void appA();
 };

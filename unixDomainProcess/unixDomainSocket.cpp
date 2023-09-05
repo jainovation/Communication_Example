@@ -6,10 +6,14 @@ void UnixSocketApp::setExitFlag() {
     m_exitFlag.store(true);
     close(m_client_socket);
     close(m_server_socket);
+    close(m_new_socket);
+    close(m_server_fd);
+    unlink(SOCKET_PATH);
 }
 
 void UnixSocketApp::Unixinit()
 {
+    unlink(SOCKET_PATH);
     // 소켓 생성
     m_server_socket = socket(AF_UNIX, SOCK_STREAM, 0);
     if (m_server_socket == -1)
@@ -116,26 +120,83 @@ UnixSocketApp::~UnixSocketApp()
     }
 }
 
+bool UnixSocketApp::receiveMessage(Message_t &message)
+{
+    char receivedMessage[sizeof(Message_t)];
+
+    ssize_t bytesRead = read(m_new_socket, receivedMessage, sizeof(receivedMessage));
+    if (bytesRead == -1)
+    {
+        std::cerr << "Error: Unable to receive message" << std::endl;
+        return false;
+    }
+
+    memcpy(&message, receivedMessage, sizeof(message));
+
+    return true;
+}
+
+bool UnixSocketApp::sendMessage(const Message_t &message)
+{
+    char sendMessage[sizeof(Message_t)];
+
+    memcpy(&sendMessage, &message, sizeof(sendMessage));
+
+    if (send(m_client_socket, sendMessage, sizeof(sendMessage), 0) == -1)
+    {
+        std::cout << "send error occur" << std::endl;
+        // return false;
+        throw false;
+    }
+    else
+    {
+        std::cout << "send message to udpTask: " << message.data << std::endl;
+    }
+    return true;
+}
+
 void UnixSocketApp::appA()
 {
+    bool status = true;
+
     while (!m_exitFlag.load())
     {
-        // 클라이언트로부터 데이터 읽기
-        memset(m_tcpBuffer, 0x00, sizeof(m_tcpBuffer));
+        memset(&m_receivedMessage, 0x00, sizeof(m_receivedMessage));
 
-        if(read(m_new_socket, m_tcpBuffer, 1024) == -1)
+        // 메시지 받기
+        status = receiveMessage(m_receivedMessage);
+
+        if (status == false)
         {
-            perror("mq_receive");
-            sleep(1);
+            perror("tcp_receive");
+            throw false;
         }
         else
         {
-            usleep(10);
-            if (send(m_client_socket, m_tcpBuffer, strlen(m_tcpBuffer), 0) == -1)
-                std::cout << "send error occur" << std::endl;
-            else
-                std::cout << "Received message from tcpTask: " << m_tcpBuffer << std::endl;
+            sendMessage(m_receivedMessage);
         }
+        saveDataToFile();
+    }
+}
+
+void UnixSocketApp::saveDataToFile()
+{
+    // 헤더(header), 본문(data), 테일(tail) 추출
+    int textLength = atoi(m_receivedMessage.header);
+    std::string data(m_receivedMessage.data, textLength);
+
+    std::ofstream outputFile("received_data.txt", std::ios::app);
+    if (outputFile.is_open())
+    {
+
+        outputFile << data << std::endl;
+
+        outputFile.close();
+        // std::cout << "Data saved to received_data.txt" << std::endl;
+    }
+    else
+    {
+        std::cerr << "Unable to open the file" << std::endl;
     }
 }
 
@@ -156,7 +217,14 @@ int main()
 {
     std::cout << "App TCP is running..." << std::endl;
 
-    app.run();
+    try
+    {
+        app.run();
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
 
     return 0;
 }

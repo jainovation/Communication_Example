@@ -3,9 +3,7 @@
 
 #include <mqueue.h>
 #include <atomic>
-
-#define QUEUE_NAME "/my_message_queue"
-#define MAX_MSG_SIZE 1024
+#include "../include/common.h"
 
 class MessageQueueApp
 {
@@ -15,6 +13,8 @@ public:
     int getMQdata();
     void run();
     void setExitFlag(); // 종료 플래그 설정 함수
+    bool sendMessage(const Message_t& message);
+
 
 private:
     mqd_t m_mq;

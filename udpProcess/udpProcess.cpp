@@ -1,12 +1,11 @@
 #include "udpProcess.h"
 
-#define SOCKET_PATH "/tmp/my_unix_socket"
-
 UdpSocketApp app;
 
 void UdpSocketApp::setExitFlag() {
     m_exitFlag.store(true);
     close(m_client_socket);
+    close(m_udp_socket);
     // close(m_server_socket);
 }
 
@@ -62,46 +61,121 @@ void UdpSocketApp::UDPinit()
         // return 1;
     }
 
+    memset(&m_server_address, 0, sizeof(m_server_address));
+
     m_server_address.sin_family = AF_INET;
     m_server_address.sin_port = htons(23456);
     m_server_address.sin_addr.s_addr = inet_addr("127.0.0.1");
 
+    m_server_addr_len = sizeof(m_server_address);
+
+    std::cout << "UDP 서버 시작. 포트: " << m_server_address.sin_port << std::endl;
+
     std::cerr << "udp Socket Connected" << std::endl;
+}
+
+bool UdpSocketApp::receiveMessage(Message_t &message)
+{
+    char receivedMessage[sizeof(Message_t)];
+
+    // 데이터 수신
+    ssize_t bytesRead = recv(m_client_socket, receivedMessage, sizeof(receivedMessage), 0);
+    if (bytesRead == -1)
+    {
+        std::cerr << "Error: Unable to receive message" << std::endl;
+        return false;
+    }
+
+    memcpy(&message, receivedMessage, sizeof(message));
+
+    return true;
+}
+
+bool UdpSocketApp::sendMessage(const Message_t &message)
+{
+    char sendMessage[sizeof(Message_t)];
+
+    memcpy(&sendMessage, &message, sizeof(sendMessage));
+
+    if (sendto(m_udp_socket, sendMessage, sizeof(sendMessage), 0, (struct sockaddr *)&m_server_address, sizeof(m_server_address)) < 0)
+    {
+        // std::cout << "send error occur" << std::endl;
+        perror("sendto error");
+        // return false;
+        throw false;
+    }
+    else
+    {
+        std::cout << "send message to smTask: " << message.data << std::endl;
+    }
+    return true;
+}
+
+bool UdpSocketApp::retryMessageFromUDP()
+{
+    // 서버로부터 응답 수신
+    int bytes_received = recvfrom(m_udp_socket, m_ackBuffer, sizeof(m_ackBuffer), 0, nullptr, nullptr);
+    if (bytes_received < 0)
+    {
+        perror("Error receiving data");
+        throw (int)m_ackBuffer[0];
+        // return 1;
+    }
+    else
+    {
+        // std::cout << "ack true: " << message.data << std::endl;
+    }
+    return (int)m_ackBuffer[0];
 }
 
 void UdpSocketApp::appA()
 {
+    bool status = true;
+
     while (!m_exitFlag.load())
     {
-        memset(m_unixBuffer, 0x00, sizeof(m_unixBuffer));
+        memset(&m_receivedMessage, 0x00, sizeof(m_receivedMessage));
 
-        // 데이터 수신
-        ssize_t bytes_received = recv(m_client_socket, m_unixBuffer, sizeof(m_unixBuffer), 0);
-        if (bytes_received == -1)
+        // 메시지 받기
+        status = receiveMessage(m_receivedMessage);
+
+        if (status == false)
         {
             perror("recv");
-            sleep(1);
-            // close(client_socket);
-            // return 1;
+            throw false;
         }
         else
         {
-            // 수신된 데이터 출력
-            // m_unixBuffer[bytes_received] = '\0';
-            // usleep(10);
             // 데이터 전송
-            ssize_t bytes_sent = sendto(m_udp_socket, m_unixBuffer, sizeof(m_unixBuffer), 0, (struct sockaddr *)&m_server_address, sizeof(m_server_address));
-            if (bytes_sent == -1)
+            sendMessage(m_receivedMessage);
+            while(retryMessageFromUDP() == true)
             {
-                perror("sendto");
-                sleep(1);
-                // return 1;
-            }
-            else
-            {
-                std::cout << "Received message from unixDomainTask: " << m_unixBuffer << std::endl;
+                // 데이터 전송
+                sendMessage(m_receivedMessage);
             }
         }
+        saveDataToFile();
+    }
+}
+
+void UdpSocketApp::saveDataToFile()
+{
+    // 헤더(header), 본문(data), 테일(tail) 추출
+    int textLength = atoi(m_receivedMessage.header);
+    std::string data(m_receivedMessage.data, textLength);
+
+    std::ofstream outputFile("received_data.txt", std::ios::app);
+    if (outputFile.is_open())
+    {
+
+        outputFile << data << std::endl;
+
+        outputFile.close();
+        // std::cout << "Data saved to received_data.txt" << std::endl;
+    }
+    else
+    {
+        std::cerr << "Unable to open the file" << std::endl;
     }
 }
 
@@ -122,7 +196,14 @@ int main()
 {
     std::cout << "App UDP is running..." << std::endl;
 
-    app.run();
+    try
+    {
+        app.run();
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
 
     return 0;
 }
